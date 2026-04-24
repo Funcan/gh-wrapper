@@ -79,6 +79,19 @@ func TestFindGitConfig(t *testing.T) {
 		}
 	})
 
+	t.Run("stat error other than ErrNotExist is returned", func(t *testing.T) {
+		// Place a regular file at <root>/.git so that stat("<root>/.git/config")
+		// returns ENOTDIR — not ErrNotExist — triggering the error-propagation path.
+		root := t.TempDir()
+		if err := os.WriteFile(filepath.Join(root, ".git"), []byte("not a dir"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		_, err := FindGitConfig(root)
+		if err == nil || errors.Is(err, ErrGitConfigNotFound) {
+			t.Errorf("got %v, want a non-ErrGitConfigNotFound error", err)
+		}
+	})
+
 	t.Run("relative dot resolves to cwd", func(t *testing.T) {
 		root := t.TempDir()
 		makeGitConfig(t, root)
@@ -506,6 +519,14 @@ func TestParseConfFile(t *testing.T) {
 
 	t.Run("directory rule missing colon returns error", func(t *testing.T) {
 		path := writeConfFile(t, "directory ~/work alice\n")
+		_, err := ParseConfFile(path)
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+	})
+
+	t.Run("directory rule with empty user returns error", func(t *testing.T) {
+		path := writeConfFile(t, "directory ~/work:\n")
 		_, err := ParseConfFile(path)
 		if err == nil {
 			t.Fatal("expected error, got nil")
