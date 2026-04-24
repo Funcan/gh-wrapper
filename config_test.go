@@ -159,3 +159,119 @@ func TestFindGitConfig(t *testing.T) {
 		}
 	})
 }
+
+// writeGitConfig writes a .git/config with the given content and returns the path.
+func writeGitConfig(t *testing.T, content string) string {
+	t.Helper()
+	dir := t.TempDir()
+	gitDir := filepath.Join(dir, ".git")
+	if err := os.MkdirAll(gitDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(gitDir, "config")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestReadGhWrapperUser(t *testing.T) {
+	t.Run("returns user from gh-wrapper section", func(t *testing.T) {
+		path := writeGitConfig(t, "[core]\n\trepositoryformatversion = 0\n[gh-wrapper]\n\tuser = alice\n")
+		got, err := ReadGhWrapperUser(path)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != "alice" {
+			t.Errorf("got %q, want %q", got, "alice")
+		}
+	})
+
+	t.Run("returns empty string when section absent", func(t *testing.T) {
+		path := writeGitConfig(t, "[core]\n\trepositoryformatversion = 0\n")
+		got, err := ReadGhWrapperUser(path)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != "" {
+			t.Errorf("got %q, want empty string", got)
+		}
+	})
+
+	t.Run("returns empty string when section present but no user key", func(t *testing.T) {
+		path := writeGitConfig(t, "[gh-wrapper]\n\tother = value\n")
+		got, err := ReadGhWrapperUser(path)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != "" {
+			t.Errorf("got %q, want empty string", got)
+		}
+	})
+
+	t.Run("finds section when not first", func(t *testing.T) {
+		path := writeGitConfig(t, "[core]\n\tbare = false\n[remote \"origin\"]\n\turl = git@github.com:org/repo.git\n[gh-wrapper]\n\tuser = bob\n")
+		got, err := ReadGhWrapperUser(path)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != "bob" {
+			t.Errorf("got %q, want %q", got, "bob")
+		}
+	})
+
+	t.Run("trims whitespace from value", func(t *testing.T) {
+		path := writeGitConfig(t, "[gh-wrapper]\n\tuser =   carol   \n")
+		got, err := ReadGhWrapperUser(path)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != "carol" {
+			t.Errorf("got %q, want %q", got, "carol")
+		}
+	})
+
+	t.Run("stops reading after gh-wrapper section ends", func(t *testing.T) {
+		// user key appears in a later section — must not be picked up
+		path := writeGitConfig(t, "[gh-wrapper]\n\tother = x\n[other]\n\tuser = impostor\n")
+		got, err := ReadGhWrapperUser(path)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != "" {
+			t.Errorf("got %q, want empty string", got)
+		}
+	})
+
+	t.Run("returns error for missing file", func(t *testing.T) {
+		_, err := ReadGhWrapperUser("/nonexistent/path/.git/config")
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+	})
+
+	// Integration: FindGitConfig + ReadGhWrapperUser round-trip.
+	t.Run("integration: FindGitConfig then ReadGhWrapperUser", func(t *testing.T) {
+		root := t.TempDir()
+		gitDir := filepath.Join(root, ".git")
+		if err := os.MkdirAll(gitDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+		content := "[core]\n\trepositoryformatversion = 0\n[gh-wrapper]\n\tuser = integrationuser\n"
+		if err := os.WriteFile(filepath.Join(gitDir, "config"), []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		cfgPath, err := FindGitConfig(root)
+		if err != nil {
+			t.Fatalf("FindGitConfig: %v", err)
+		}
+		got, err := ReadGhWrapperUser(cfgPath)
+		if err != nil {
+			t.Fatalf("ReadGhWrapperUser: %v", err)
+		}
+		if got != "integrationuser" {
+			t.Errorf("got %q, want %q", got, "integrationuser")
+		}
+	})
+}
