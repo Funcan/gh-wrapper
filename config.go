@@ -5,6 +5,7 @@ package main
 import (
 	"bufio"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -81,4 +82,35 @@ func readGitConfigValue(gitConfigPath, section, key string) (string, error) {
 		}
 	}
 	return "", scanner.Err()
+}
+
+// ParseOrgRepo extracts the org and repo name from a GitHub remote URL.
+// Supports https:// and git@ formats, with or without a .git suffix.
+func ParseOrgRepo(remoteURL string) (org, repo string, err error) {
+	var path string
+
+	switch {
+	case strings.HasPrefix(remoteURL, "git@"):
+		// git@github.com:org/repo.git
+		_, after, ok := strings.Cut(remoteURL, ":")
+		if !ok {
+			return "", "", fmt.Errorf("invalid git@ URL: %q", remoteURL)
+		}
+		path = after
+	case strings.HasPrefix(remoteURL, "https://"), strings.HasPrefix(remoteURL, "http://"):
+		// https://github.com/org/repo.git
+		_, after, _ := strings.Cut(remoteURL, "://")
+		_, path, _ = strings.Cut(after, "/")
+	default:
+		return "", "", fmt.Errorf("unsupported remote URL format: %q", remoteURL)
+	}
+
+	path = strings.TrimSuffix(path, ".git")
+
+	org, repo, ok := strings.Cut(path, "/")
+	if !ok || org == "" || repo == "" {
+		return "", "", fmt.Errorf("cannot parse org/repo from URL: %q", remoteURL)
+	}
+
+	return org, repo, nil
 }

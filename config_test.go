@@ -342,3 +342,82 @@ func TestReadRemoteURL(t *testing.T) {
 		}
 	})
 }
+
+func TestParseOrgRepo(t *testing.T) {
+	tests := []struct {
+		name      string
+		remoteURL string
+		wantOrg   string
+		wantRepo  string
+		wantErr   bool
+	}{
+		{
+			name:      "https with .git suffix",
+			remoteURL: "https://github.com/myorg/myrepo.git",
+			wantOrg:   "myorg",
+			wantRepo:  "myrepo",
+		},
+		{
+			name:      "https without .git suffix",
+			remoteURL: "https://github.com/myorg/myrepo",
+			wantOrg:   "myorg",
+			wantRepo:  "myrepo",
+		},
+		{
+			name:      "http with .git suffix",
+			remoteURL: "http://github.com/myorg/myrepo.git",
+			wantOrg:   "myorg",
+			wantRepo:  "myrepo",
+		},
+		{
+			name:      "git@ with .git suffix",
+			remoteURL: "git@github.com:myorg/myrepo.git",
+			wantOrg:   "myorg",
+			wantRepo:  "myrepo",
+		},
+		{
+			name:      "git@ without .git suffix",
+			remoteURL: "git@github.com:myorg/myrepo",
+			wantOrg:   "myorg",
+			wantRepo:  "myrepo",
+		},
+		{
+			name:      "empty string",
+			remoteURL: "",
+			wantErr:   true,
+		},
+		{
+			name:      "unsupported scheme",
+			remoteURL: "ssh://git@github.com/org/repo.git",
+			wantErr:   true,
+		},
+		{
+			name:      "git@ missing colon",
+			remoteURL: "git@github.com/org/repo.git",
+			wantErr:   true,
+		},
+		{
+			name:      "https missing repo",
+			remoteURL: "https://github.com/onlyorg",
+			wantErr:   true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			org, repo, err := ParseOrgRepo(tt.remoteURL)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("expected error, got org=%q repo=%q", org, repo)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if org != tt.wantOrg || repo != tt.wantRepo {
+				t.Errorf("got org=%q repo=%q, want org=%q repo=%q", org, repo, tt.wantOrg, tt.wantRepo)
+			}
+		})
+	}
+}
