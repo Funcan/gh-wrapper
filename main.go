@@ -16,13 +16,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	targetUser, err := resolveUser(cwd)
+	targetUser, hostname, err := resolveUser(cwd)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "[gh-wrapper] failed to resolve user: %v\n", err)
 		os.Exit(1)
 	}
 
-	exitCode, caught := run(args, targetUser, "github.com")
+	exitCode, caught := run(args, targetUser, hostname)
 	if caught != nil {
 		// Re-raise so the shell sees signal termination (not a plain exit code).
 		signal.Reset(caught)

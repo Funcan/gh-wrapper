@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -81,7 +82,36 @@ func expandTilde(path string) (string, error) {
 	return path, nil
 }
 
-// resolveUser is the top-level convenience used by main. Wired up in Phase 7.
-func resolveUser(cwd string) (string, error) {
-	return "", nil
+// resolveUser is the top-level convenience used by main. It wires together git
+// config lookup, remote URL parsing, conf file parsing, and user resolution.
+// It returns the target user (empty string = no switch needed) and the GitHub
+// hostname derived from the remote URL (defaulting to "github.com").
+func resolveUser(cwd string) (targetUser, hostname string, err error) {
+	hostname = "github.com"
+
+	var gitConfigPath, remoteURL string
+	gitConfigPath, err = FindGitConfig(cwd)
+	if err != nil && !errors.Is(err, ErrGitConfigNotFound) {
+		return "", "", err
+	}
+	if gitConfigPath != "" {
+		remoteURL, _ = ReadRemoteURL(gitConfigPath)
+	}
+	if remoteURL != "" {
+		if h, herr := ParseHostname(remoteURL); herr == nil {
+			hostname = h
+		}
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", "", err
+	}
+	rules, err := ParseConfFile(filepath.Join(home, ".gh-wrapper.conf"))
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return "", "", err
+	}
+
+	targetUser, err = ResolveUser(cwd, gitConfigPath, remoteURL, rules)
+	return targetUser, hostname, err
 }
