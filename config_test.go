@@ -529,6 +529,79 @@ func TestParseConfFile(t *testing.T) {
 	})
 }
 
+func TestParseHostname(t *testing.T) {
+	tests := []struct {
+		name      string
+		remoteURL string
+		want      string
+		wantErr   bool
+	}{
+		{
+			name:      "git@ standard github.com",
+			remoteURL: "git@github.com:org/repo.git",
+			want:      "github.com",
+		},
+		{
+			name:      "git@ enterprise host",
+			remoteURL: "git@github.enterprise.com:org/repo.git",
+			want:      "github.enterprise.com",
+		},
+		{
+			name:      "git@ without .git suffix",
+			remoteURL: "git@github.com:org/repo",
+			want:      "github.com",
+		},
+		{
+			name:      "git@ missing colon returns error",
+			remoteURL: "git@github.com/org/repo.git",
+			wantErr:   true,
+		},
+		{
+			name:      "https URL",
+			remoteURL: "https://github.com/org/repo.git",
+			want:      "github.com",
+		},
+		{
+			name:      "https enterprise URL",
+			remoteURL: "https://github.enterprise.com/org/repo.git",
+			want:      "github.enterprise.com",
+		},
+		{
+			name:      "http URL",
+			remoteURL: "http://github.com/org/repo.git",
+			want:      "github.com",
+		},
+		{
+			name:      "ssh URL",
+			remoteURL: "ssh://git@github.com/org/repo.git",
+			want:      "github.com",
+		},
+		{
+			name:      "empty string returns error",
+			remoteURL: "",
+			wantErr:   true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ParseHostname(tt.remoteURL)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("expected error, got %q", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("got %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestParseOrgRepo(t *testing.T) {
 	tests := []struct {
 		name      string
