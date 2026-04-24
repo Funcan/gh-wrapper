@@ -343,6 +343,192 @@ func TestReadRemoteURL(t *testing.T) {
 	})
 }
 
+func writeConfFile(t *testing.T, content string) string {
+	t.Helper()
+	f, err := os.CreateTemp(t.TempDir(), "gh-wrapper*.conf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.WriteString(content); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return f.Name()
+}
+
+func TestParseConfFile(t *testing.T) {
+	t.Run("empty file returns empty slice", func(t *testing.T) {
+		path := writeConfFile(t, "")
+		rules, err := ParseConfFile(path)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(rules) != 0 {
+			t.Errorf("got %d rules, want 0", len(rules))
+		}
+	})
+
+	t.Run("blank lines and comments are ignored", func(t *testing.T) {
+		path := writeConfFile(t, "\n# this is a comment\n\n# another comment\n")
+		rules, err := ParseConfFile(path)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(rules) != 0 {
+			t.Errorf("got %d rules, want 0", len(rules))
+		}
+	})
+
+	t.Run("directory rule", func(t *testing.T) {
+		path := writeConfFile(t, "directory ~/work: alice\n")
+		rules, err := ParseConfFile(path)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(rules) != 1 {
+			t.Fatalf("got %d rules, want 1", len(rules))
+		}
+		r := rules[0]
+		if r.Type != "directory" || r.Path != "~/work" || r.User != "alice" {
+			t.Errorf("got %+v, want {Type:directory Path:~/work User:alice}", r)
+		}
+	})
+
+	t.Run("github org/repo rule", func(t *testing.T) {
+		path := writeConfFile(t, "github myorg/myrepo: bob\n")
+		rules, err := ParseConfFile(path)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(rules) != 1 {
+			t.Fatalf("got %d rules, want 1", len(rules))
+		}
+		r := rules[0]
+		if r.Type != "github" || r.Org != "myorg" || r.Repo != "myrepo" || r.User != "bob" {
+			t.Errorf("got %+v, want {Type:github Org:myorg Repo:myrepo User:bob}", r)
+		}
+	})
+
+	t.Run("github org-only rule", func(t *testing.T) {
+		path := writeConfFile(t, "github myorg: carol\n")
+		rules, err := ParseConfFile(path)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(rules) != 1 {
+			t.Fatalf("got %d rules, want 1", len(rules))
+		}
+		r := rules[0]
+		if r.Type != "github" || r.Org != "myorg" || r.Repo != "" || r.User != "carol" {
+			t.Errorf("got %+v, want {Type:github Org:myorg Repo: User:carol}", r)
+		}
+	})
+
+	t.Run("github catch-all rule", func(t *testing.T) {
+		path := writeConfFile(t, "github :defaultuser\n")
+		rules, err := ParseConfFile(path)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(rules) != 1 {
+			t.Fatalf("got %d rules, want 1", len(rules))
+		}
+		r := rules[0]
+		if r.Type != "github" || r.Org != "" || r.Repo != "" || r.User != "defaultuser" {
+			t.Errorf("got %+v, want {Type:github Org: Repo: User:defaultuser}", r)
+		}
+	})
+
+	t.Run("multiple rules preserve order", func(t *testing.T) {
+		content := "# comment\ndirectory ~/work: alice\ngithub myorg/myrepo: bob\ngithub myorg: carol\ngithub :dave\n"
+		path := writeConfFile(t, content)
+		rules, err := ParseConfFile(path)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(rules) != 4 {
+			t.Fatalf("got %d rules, want 4", len(rules))
+		}
+		wantUsers := []string{"alice", "bob", "carol", "dave"}
+		for i, r := range rules {
+			if r.User != wantUsers[i] {
+				t.Errorf("rule[%d]: got user %q, want %q", i, r.User, wantUsers[i])
+			}
+		}
+	})
+
+	t.Run("whitespace trimmed from path and user", func(t *testing.T) {
+		path := writeConfFile(t, "directory  ~/some/path : myuser \n")
+		rules, err := ParseConfFile(path)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(rules) != 1 {
+			t.Fatalf("got %d rules, want 1", len(rules))
+		}
+		r := rules[0]
+		if r.Path != "~/some/path" || r.User != "myuser" {
+			t.Errorf("got path=%q user=%q, want path=~/some/path user=myuser", r.Path, r.User)
+		}
+	})
+
+	t.Run("file not found returns error", func(t *testing.T) {
+		_, err := ParseConfFile("/nonexistent/path/gh-wrapper.conf")
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+	})
+
+	t.Run("unrecognised line returns error", func(t *testing.T) {
+		path := writeConfFile(t, "unknown rule here\n")
+		_, err := ParseConfFile(path)
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+	})
+
+	t.Run("directory catch-all rule", func(t *testing.T) {
+		path := writeConfFile(t, "directory :defaultuser\n")
+		rules, err := ParseConfFile(path)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(rules) != 1 {
+			t.Fatalf("got %d rules, want 1", len(rules))
+		}
+		r := rules[0]
+		if r.Type != "directory" || r.Path != "" || r.User != "defaultuser" {
+			t.Errorf("got %+v, want {Type:directory Path: User:defaultuser}", r)
+		}
+	})
+
+	t.Run("directory rule missing colon returns error", func(t *testing.T) {
+		path := writeConfFile(t, "directory ~/work alice\n")
+		_, err := ParseConfFile(path)
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+	})
+
+	t.Run("github rule missing colon returns error", func(t *testing.T) {
+		path := writeConfFile(t, "github myorg alice\n")
+		_, err := ParseConfFile(path)
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+	})
+
+	t.Run("github rule with empty user returns error", func(t *testing.T) {
+		path := writeConfFile(t, "github myorg:\n")
+		_, err := ParseConfFile(path)
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+	})
+}
+
 func TestParseOrgRepo(t *testing.T) {
 	tests := []struct {
 		name      string

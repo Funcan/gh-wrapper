@@ -84,6 +84,90 @@ func readGitConfigValue(gitConfigPath, section, key string) (string, error) {
 	return "", scanner.Err()
 }
 
+// Rule represents a single line from ~/.gh-wrapper.conf.
+type Rule struct {
+	Type string // "directory" or "github"
+	Path string // for directory rules: the path prefix (unexpanded)
+	Org  string // for github rules: org to match (empty = catch-all)
+	Repo string // for github rules: repo to match (empty = org-only or catch-all)
+	User string // the user to switch to when this rule matches
+}
+
+// ParseConfFile parses ~/.gh-wrapper.conf and returns the ordered list of rules.
+// Blank lines and lines starting with '#' are ignored. Returns an error for any
+// unrecognised line.
+func ParseConfFile(path string) ([]Rule, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	var rules []Rule
+	lineNum := 0
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		lineNum++
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		switch {
+		case strings.HasPrefix(line, "directory "):
+			rule, err := parseDirectoryRule(line)
+			if err != nil {
+				return nil, fmt.Errorf("line %d: %w", lineNum, err)
+			}
+			rules = append(rules, rule)
+		case strings.HasPrefix(line, "github "):
+			rule, err := parseGithubRule(line)
+			if err != nil {
+				return nil, fmt.Errorf("line %d: %w", lineNum, err)
+			}
+			rules = append(rules, rule)
+		default:
+			return nil, fmt.Errorf("line %d: unrecognised rule: %q", lineNum, line)
+		}
+	}
+	return rules, scanner.Err()
+}
+
+// parseDirectoryRule parses a line of the form "directory PATH: USER".
+func parseDirectoryRule(line string) (Rule, error) {
+	rest := strings.TrimPrefix(line, "directory ")
+	path, user, ok := strings.Cut(rest, ":")
+	if !ok {
+		return Rule{}, fmt.Errorf("invalid directory rule (missing ':'): %q", line)
+	}
+	path = strings.TrimSpace(path)
+	user = strings.TrimSpace(user)
+	if user == "" {
+		return Rule{}, fmt.Errorf("invalid directory rule (empty user): %q", line)
+	}
+	return Rule{Type: "directory", Path: path, User: user}, nil
+}
+
+// parseGithubRule parses a line of the form "github [ORG[/REPO]]: USER".
+func parseGithubRule(line string) (Rule, error) {
+	rest := strings.TrimPrefix(line, "github ")
+	key, user, ok := strings.Cut(rest, ":")
+	if !ok {
+		return Rule{}, fmt.Errorf("invalid github rule (missing ':'): %q", line)
+	}
+	key = strings.TrimSpace(key)
+	user = strings.TrimSpace(user)
+	if user == "" {
+		return Rule{}, fmt.Errorf("invalid github rule (empty user): %q", line)
+	}
+
+	var org, repo string
+	if key != "" {
+		org, repo, _ = strings.Cut(key, "/")
+	}
+	return Rule{Type: "github", Org: org, Repo: repo, User: user}, nil
+}
+
 // ParseOrgRepo extracts the org and repo name from a GitHub remote URL.
 // Supports https:// and git@ formats, with or without a .git suffix.
 func ParseOrgRepo(remoteURL string) (org, repo string, err error) {
