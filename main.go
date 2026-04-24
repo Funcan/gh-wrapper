@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 )
 
 func main() {
@@ -20,6 +22,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	exitCode := run(args, targetUser, "github.com")
+	exitCode, caught := run(args, targetUser, "github.com")
+	if caught != nil {
+		// Re-raise so the shell sees signal termination (not a plain exit code).
+		signal.Reset(caught)
+		_ = syscall.Kill(syscall.Getpid(), caught.(syscall.Signal))
+	}
 	os.Exit(exitCode)
 }
