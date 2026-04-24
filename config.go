@@ -45,6 +45,18 @@ func FindGitConfig(startDir string) (string, error) {
 // ReadGhWrapperUser reads the `user` key from the [gh-wrapper] section of the
 // git config file at gitConfigPath. Returns "" if the section or key is absent.
 func ReadGhWrapperUser(gitConfigPath string) (string, error) {
+	return readGitConfigValue(gitConfigPath, "[gh-wrapper]", "user")
+}
+
+// ReadRemoteURL reads the `url` key from the [remote "origin"] section of the
+// git config file at gitConfigPath. Returns "" if the section or key is absent.
+func ReadRemoteURL(gitConfigPath string) (string, error) {
+	return readGitConfigValue(gitConfigPath, `[remote "origin"]`, "url")
+}
+
+// readGitConfigValue returns the value of key within the named section of a
+// git config file. Returns "" if the section or key is not present.
+func readGitConfigValue(gitConfigPath, section, key string) (string, error) {
 	f, err := os.Open(gitConfigPath)
 	if err != nil {
 		return "", err
@@ -57,13 +69,13 @@ func ReadGhWrapperUser(gitConfigPath string) (string, error) {
 		line := strings.TrimSpace(scanner.Text())
 
 		if strings.HasPrefix(line, "[") {
-			inSection = line == "[gh-wrapper]"
+			inSection = line == section
 			continue
 		}
 
 		if inSection {
-			key, value, ok := strings.Cut(line, "=")
-			if ok && strings.TrimSpace(key) == "user" {
+			k, value, ok := strings.Cut(line, "=")
+			if ok && strings.TrimSpace(k) == key {
 				return strings.TrimSpace(value), nil
 			}
 		}

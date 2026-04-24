@@ -275,3 +275,70 @@ func TestReadGhWrapperUser(t *testing.T) {
 		}
 	})
 }
+
+func TestReadRemoteURL(t *testing.T) {
+	t.Run("returns url from remote origin section", func(t *testing.T) {
+		path := writeGitConfig(t, "[core]\n\tbare = false\n[remote \"origin\"]\n\turl = git@github.com:org/repo.git\n\tfetch = +refs/heads/*:refs/remotes/origin/*\n")
+		got, err := ReadRemoteURL(path)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != "git@github.com:org/repo.git" {
+			t.Errorf("got %q, want %q", got, "git@github.com:org/repo.git")
+		}
+	})
+
+	t.Run("returns empty string when remote origin section absent", func(t *testing.T) {
+		path := writeGitConfig(t, "[core]\n\tbare = false\n")
+		got, err := ReadRemoteURL(path)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != "" {
+			t.Errorf("got %q, want empty string", got)
+		}
+	})
+
+	t.Run("does not match other remote sections", func(t *testing.T) {
+		path := writeGitConfig(t, "[remote \"upstream\"]\n\turl = git@github.com:other/repo.git\n")
+		got, err := ReadRemoteURL(path)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != "" {
+			t.Errorf("got %q, want empty string", got)
+		}
+	})
+
+	t.Run("returns error for missing file", func(t *testing.T) {
+		_, err := ReadRemoteURL("/nonexistent/path/.git/config")
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+	})
+
+	// Integration: FindGitConfig + ReadRemoteURL round-trip.
+	t.Run("integration: FindGitConfig then ReadRemoteURL", func(t *testing.T) {
+		root := t.TempDir()
+		gitDir := filepath.Join(root, ".git")
+		if err := os.MkdirAll(gitDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+		content := "[core]\n\tbare = false\n[remote \"origin\"]\n\turl = https://github.com/org/repo.git\n"
+		if err := os.WriteFile(filepath.Join(gitDir, "config"), []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		cfgPath, err := FindGitConfig(root)
+		if err != nil {
+			t.Fatalf("FindGitConfig: %v", err)
+		}
+		got, err := ReadRemoteURL(cfgPath)
+		if err != nil {
+			t.Fatalf("ReadRemoteURL: %v", err)
+		}
+		if got != "https://github.com/org/repo.git" {
+			t.Errorf("got %q, want %q", got, "https://github.com/org/repo.git")
+		}
+	})
+}
