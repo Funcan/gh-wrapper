@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -169,7 +170,7 @@ func parseGithubRule(line string) (Rule, error) {
 }
 
 // ParseOrgRepo extracts the org and repo name from a GitHub remote URL.
-// Supports https:// and git@ formats, with or without a .git suffix.
+// Supports https://, http://, ssh://, and git@ formats, with or without a .git suffix.
 func ParseOrgRepo(remoteURL string) (org, repo string, err error) {
 	var path string
 
@@ -197,4 +198,24 @@ func ParseOrgRepo(remoteURL string) (org, repo string, err error) {
 	}
 
 	return org, repo, nil
+}
+
+// ParseHostname extracts the hostname from a GitHub remote URL.
+// Supports https://, http://, ssh://, and git@ (scp-style) formats.
+func ParseHostname(remoteURL string) (string, error) {
+	if strings.HasPrefix(remoteURL, "git@") {
+		// scp-style: git@github.hpe.com:org/repo.git
+		rest := strings.TrimPrefix(remoteURL, "git@")
+		host, _, ok := strings.Cut(rest, ":")
+		if !ok {
+			return "", fmt.Errorf("invalid git@ URL: %q", remoteURL)
+		}
+		return host, nil
+	}
+
+	u, err := url.Parse(remoteURL)
+	if err != nil || u.Hostname() == "" {
+		return "", fmt.Errorf("cannot parse hostname from URL: %q", remoteURL)
+	}
+	return u.Hostname(), nil
 }

@@ -20,6 +20,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	exitCode := run(args, targetUser)
+	exitCode := run(args, targetUser, "github.com")
 	os.Exit(exitCode)
 }
