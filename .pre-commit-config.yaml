@@ -1,0 +1,23 @@
+repos:
+  - repo: local
+    hooks:
+      - id: fmt
+        name: gofmt
+        entry: make fmt
+        language: system
+        pass_filenames: false
+        types: [go]
+
+      - id: build
+        name: build
+        entry: make build
+        language: system
+        pass_filenames: false
+        types: [go]
+
+      - id: test
+        name: test
+        entry: make test
+        language: system
+        pass_filenames: false
+        types: [go]
