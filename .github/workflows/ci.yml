@@ -15,6 +15,9 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Lint GitHub Actions
+        uses: Funcan/gh-action-lint@781ba972d857b41686756b74d51a1fc00d3aba04 # v1.4.0
+
       - name: Build
         run: make build
 
