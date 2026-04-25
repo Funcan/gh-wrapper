@@ -1,5 +1,3 @@
-gh-wrapper
-==========
 
 A golang wrapper around Github's `gh` CLI.
 
